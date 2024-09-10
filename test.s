@@ -24,10 +24,3 @@ main:
     // # Close the file (sys_close)
     // mov $3, %rax                           # sys_close system call number
     // syscall                                # Make system call
-
-    movq	$48, %rdi
-	call	putchar_unlocked@PLT
-
-    movl	$0, %eax
-	// popq	%rbp
-	ret                         # Make system call
