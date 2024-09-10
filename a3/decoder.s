@@ -1,7 +1,3 @@
-# parameter order:         rdi, rsi, rdx, rcx, r8, r9, rest in reverse order on stack
-# return value location:   rax
-# instruction suffixes:    b - 8, w - 16, l - 32, q - 64
-
 .text
 	printf_template: .asciz "%c"
 
@@ -29,6 +25,7 @@ decode:
 	pushq %r12
 	pushq %r13
 	pushq %r14
+	pushq %r15
 
 	xor %r12, %r12                  # clear offset register (r12)
 	movq %rdi, %r13                 # put message location in r13
@@ -56,6 +53,7 @@ decode_print_loop:
 
 end:
 	# epilogue
+	popq %r15
 	popq %r14
 	popq %r13
 	popq %r12
