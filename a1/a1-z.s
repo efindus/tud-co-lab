@@ -42,7 +42,7 @@ main:
 	movq -8(%rbp), %rsi             # load the second number inot %rsi (second argument)
 
 	# computing the result
-	call fastpow                    # call fastpow to compute the result (base^exponent) in %rax
+	call pow                        # call pow to compute the result (base^exponent) in %rax
 
 	# printing the result
 	movq %rax, %rsi                 # move the result into the second argument
@@ -59,14 +59,14 @@ main:
 
 
 # ************************************************************
-# Subroutine: fastpow                                        *
+# Subroutine: pow                                            *
 # Description: computes base ** exponent                     *
 # Parameters:                                                *
 #   first: the value of base (as 64 bit integer)             *
 #   second: the value of exponent (as 64 bit integer)        *
 #   return: base ** exponent (base to the power of e)        *
 # ************************************************************
-fastpow:
+pow:
 	push %rbp                       # save the base pointer
 	mov %rsp, %rbp                  # set up the new base pointer
 
