@@ -14,7 +14,7 @@
 
 # ************************************************************
 # Subroutine: decode                                         *
-# Description: decodes message as defined in Assignment 3    *
+# Description: decodes message as defined in Assignment 4    *
 #   - 2 byte unknown                                         *
 #   - 4 byte index                                           *
 #   - 1 byte amount                                          *

@@ -80,11 +80,18 @@ brainfuck:
 	addq $8, %r12       # skip the size for future use
 
 	movq %r13, %r14
-	imul $16, %r14      # allocate 2 quads for every byte of the program to definately avoid reallocations
-	addq $1, %r14       # make sure we have space for the final null byte
+	imul $16, %r14      # allocate 2 quads for every byte of the program to be certain we have enough space for the entire machine code
 
-	movq %r14, %rdi
-	call malloc
+	# get executable memory
+	mov $9, %rax        # sys_mmap (9)
+	xor %rdi, %rdi      # addr = NULL (let the kernel choose address)
+	mov %r14, %rsi      # length
+	mov $7, %rdx        # prot = PROT_READ | PROT_WRITE | PROT_EXEC (7)
+	mov $0x22, %r10      # flags = MAP_PRIVATE | MAP_ANONYMOUS (0x22)
+	mov $-1, %r8        # fd = -1 (not backed by a file)
+	xor %r9, %r9        # offset = 0
+	syscall             # invoke syscall
+
 	movq %rax, %r14     # store the pointer in r14, as we don't need the size anymore
 
 	xor %rax, %rax      # use rax as the loop counter
