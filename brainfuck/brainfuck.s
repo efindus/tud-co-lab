@@ -98,9 +98,10 @@ brainfuck:
 	xor %r8, %r8        # use r8 as the loop counter
 	xor %rcx, %rcx      # clear rcx before using cl in the loop
 	xor %r9, %r9        # use r9 as the write counter
-	mov $256, %r10      # use r10 as store for division
+	mov $256, %r10      # use r10 as store for idiv
+
 brainfuck_parse_loop:
-	movq $1, %rax       # use rax as repetition counter
+	movq $1, %rax                           # use rax as repetition counter
 	movb (%r12, %r8), %cl                   # store the current character in cl
 
 	cmpb $1, char_repetition_table(, %ecx)  # check if we can collapse adjacent commands of this type
@@ -159,6 +160,20 @@ brainfuck_parse_loop_4:
 
 # 5: [, ip to set if *val == 0         [91]
 brainfuck_parse_loop_5:
+	# check if the loop is basically [-] (next two characters are 2d 5d), optimize to movb $0, (%r12, %r13)
+	cmpw $0x5d2d, 1(%r12, %r8)
+	jne brainfuck_parse_loop_5_normal
+
+	addq $2, %r8                            # advance the file offset pointer
+
+	# (x86 machine code for movb $0, (%r12, %r13)) 43 c6 04 2c 00
+	movl $0x2c04c643, (%r14, %r9)
+	movb $0x00, 4(%r14, %r9)
+
+	addq $5, %r9                            # advance the machine code pointer
+	jmp brainfuck_parse_loop_end
+
+brainfuck_parse_loop_5_normal:
 	# (x86 machine code for cmpb $0, (%r12, %r13)) 43 80 3c 2c 00
 	# (x86 machine code for je <4-byte offset>) 0f 84 <4-byte offset>
 	movl $0x2c3c8043, (%r14, %r9)
