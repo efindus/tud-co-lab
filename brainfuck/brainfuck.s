@@ -98,7 +98,6 @@ brainfuck:
 	xor %r8, %r8        # use r8 as the loop counter
 	xor %rcx, %rcx      # clear rcx before using cl in the loop
 	xor %r9, %r9        # use r9 as the write counter
-	mov $256, %r10      # use r10 as store for idiv
 
 brainfuck_parse_loop:
 	movq $1, %rax                           # use rax as repetition counter
@@ -136,24 +135,16 @@ brainfuck_parse_loop_2:
 
 # 3: +, count                          [43]
 brainfuck_parse_loop_3:
-	# calculate (repetition count) % 256, as the cells are single bytes; result in rdx
-	movq $0, %rdx
-	idiv %r10
-
 	movl $0x2c048043, (%r14, %r9)           # (x86 machine code for addb imm, (%r12, %r13)) 43 80 04 2c <imm>
-	movq %rdx, 4(%r14, %r9)                 # set the immediate
+	movb %al, 4(%r14, %r9)                 # set the immediate
 
 	addq $5, %r9                            # advance the machine code pointer
 	jmp brainfuck_parse_loop_end
 
 # 4: -, count                          [45]
 brainfuck_parse_loop_4:
-	# calculate (repetition count) % 256, as the cells are single bytes; result in rdx
-	movq $0, %rdx
-	idiv %r10
-
 	movl $0x2c2c8043, (%r14, %r9)           # (x86 machine code for addb imm, (%r12, %r13)) 43 80 2c 2c <imm>
-	movq %rdx, 4(%r14, %r9)                 # set the immediate
+	movb %al, 4(%r14, %r9)                 # set the immediate
 
 	addq $5, %r9                            # advance the machine code pointer
 	jmp brainfuck_parse_loop_end
