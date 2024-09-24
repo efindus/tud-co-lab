@@ -14,7 +14,7 @@
 # 6: ], ip to set if *val != 0         [93]
 
 # jump tables for speed
-# table for checking whether to collapse neighbooring commands of given type
+# table for checking whether to collapse neighboring commands of given type
 	char_repetition_table:
 		.zero 43
 		.byte 1    # + char
