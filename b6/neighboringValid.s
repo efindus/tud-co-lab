@@ -1,0 +1,4 @@
+.text
+
+MESSAGE: .string "<>{}[]()"
+
