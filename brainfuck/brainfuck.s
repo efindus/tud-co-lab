@@ -54,14 +54,15 @@
 # subroutine to call putchar
 # getting a dynamically linked offset for machine code to use proved too annoying
 putchar_unlocked_call:
-	call putchar_unlocked
-	ret
+	jmp putchar_unlocked
 
 # subroutine to call getchar
 # getting a dynamically linked offset for machine code to use proved too annoying
 getchar_unlocked_call:
-	call getchar_unlocked
-	ret
+	jmp getchar_unlocked
+
+# TODO: determine static offsets for viable loops
+
 
 # Your brainfuck subroutine will receive one argument:
 # a zero termianted string containing the code to execute.
