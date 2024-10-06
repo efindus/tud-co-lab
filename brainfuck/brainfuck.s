@@ -3,9 +3,6 @@
 	program_data: .zero 30000
 
 .text
-# a big constant
-	two_to_62: .quad 0x4000000000000000
-
 # character reference:
 # 3: +, count                          [43]
 # 7: , basically getchar_unlocked      [44]
@@ -103,12 +100,11 @@ brainfuck:
 	xor %rcx, %rcx      # clear rcx before using cl in the loop
 	xor %r9, %r9        # use r9 as the write counter
 
-	movq $0, %rsi             # use rsi as global offset counter
-
-	# loop unrolling state registers
+	# optimization (loop unrolling and pointer position precomputing) state registers
 	xor %r10, %r10            # use r10 as *p delta counter
-	movq two_to_62, %r11      # use r11 as offset counter, when preconditions fail (IO occurs) set to 2^62
-	xor %r15, %r15            # use r15 to indicate that we are in unroll mode
+	movq $0, %r11             # use r11 as loop offset counter
+	movq $0, %rsi             # use rsi as global offset counter
+	movq $-1, %r15            # use r15 to indicate that we are in unroll mode (-1 = preconditions failed (IO occured), 0 = not unrolling, preconditions ok, 1 = unrolling)
 	# use rbx as a temporary store for r8 at the last [ location
 
 brainfuck_parse_loop:
@@ -131,43 +127,31 @@ brainfuck_parse_loop_after_rep:
 
 # 1: >, count                          [62]
 brainfuck_parse_loop_1:
+	# as the offsets are precomputed statically, there is no need for doing anything else
 	addq %rax, %r11                         # count the offset for loop unrolls
 	addq %rax, %rsi                         # count the global offset
 
-	cmpb $0, %r15b                          # if in unroll mode we don't need to do anything else
-	jne brainfuck_parse_loop_end
-
-	movl $0x00c58149, (%r14, %r9)           # (x86 machine code for addq 4-byte imm, %r13) 49 81 c5 <4-byte imm>; we are adding an additional 00 byte in order to avoid introducing more mov instructions
-	movl %eax, 3(%r14, %r9)                 # set the immediate at offset 3 (as the instruction takes just 3 bytes)
-
-	addq $7, %r9                            # advance the machine code pointer
 	jmp brainfuck_parse_loop_end
 
 # 2: <, count                          [60]
 brainfuck_parse_loop_2:
+	# as the offsets are precomputed statically, there is no need for doing anything else
 	subq %rax, %r11                         # count the offset for loop unrolls
 	subq %rax, %rsi                         # count the global offset
 
-	cmpb $0, %r15b                          # if in unroll mode we don't need to do anything else
-	jne brainfuck_parse_loop_end
-
-	movl $0x00ed8149, (%r14, %r9)           # (x86 machine code for addq 4-byte imm, %r13) 49 81 ed <4-byte imm>; we are adding an additional 00 byte in order to avoid introducing more mov instructions
-	movl %eax, 3(%r14, %r9)                 # set the immediate at offset 3 (as the instruction takes just 3 bytes)
-
-	addq $7, %r9                            # advance the machine code pointer
 	jmp brainfuck_parse_loop_end
 
 # 3: +, count                          [43]
 brainfuck_parse_loop_3:
-	cmpb $0, %r15b                          # if in unroll mode generate necessary instructions
-	je brainfuck_parse_loop_3_normal_flow
+	cmpq $1, %r15                           # if not in unroll mode skip unroll_loop
+	jne brainfuck_parse_loop_3_normal_flow
 
 brainfuck_parse_loop_3_unroll_loop:
 	# (x86 machine code for addb %bl, <4-byte offset>(%r12, %r13)) 43 00 9c 2c <4-byte offset>
 	movl $0x2c9c0043, (%r14, %r9)
-	movl %r11d, 4(%r14, %r9)
+	movl %esi, 4(%r14, %r9)                 # use global pointer offset
 
-	addq $8, %r9                           # advance the machine code pointer
+	addq $8, %r9                            # advance the machine code pointer
 
 	dec %al
 	test %al, %al
@@ -176,8 +160,10 @@ brainfuck_parse_loop_3_unroll_loop:
 	jmp brainfuck_parse_loop_end
 
 brainfuck_parse_loop_3_normal_flow:
-	movl $0x2c048043, (%r14, %r9)           # (x86 machine code for addb imm, (%r12, %r13)) 43 80 04 2c <imm>
-	movb %al, 4(%r14, %r9)                  # set the immediate
+	# (x86 machine code for addb imm, <4-byte offset>(%r12, %r13)) 43 80 84 2c <4-byte offset> <imm>
+	movl $0x2c848043, (%r14, %r9)
+	movl %esi, 4(%r14, %r9)                 # use global pointer offset
+	movb %al, 8(%r14, %r9)                  # add amount
 
 	cmpq $0, %r11                           # if the offset of the pointer is not 0 the write does not affect *p
 	jne brainfuck_parse_loop_3_next
@@ -185,18 +171,18 @@ brainfuck_parse_loop_3_normal_flow:
 	addq %rax, %r10                         # use r10 to calculate the loop delta for *p
 
 brainfuck_parse_loop_3_next:
-	addq $5, %r9                            # advance the machine code pointer
+	addq $9, %r9                            # advance the machine code pointer
 	jmp brainfuck_parse_loop_end
 
 # 4: -, count                          [45]
 brainfuck_parse_loop_4:
-	cmpb $0, %r15b                          # if in unroll mode generate necessary instructions
-	je brainfuck_parse_loop_4_normal_flow
+	cmpq $1, %r15                           # if not in unroll mode skip unroll_loop
+	jne brainfuck_parse_loop_4_normal_flow
 
 brainfuck_parse_loop_4_unroll_loop:
 	# (x86 machine code for subb %al, <4-byte offset>(%r12, %r13)) 43 28 9c 2c <4-byte offset>
 	movl $0x2c9c2843, (%r14, %r9)
-	movl %r11d, 4(%r14, %r9)
+	movl %esi, 4(%r14, %r9)                # use global pointer offset
 
 	addq $8, %r9                           # advance the machine code pointer
 
@@ -207,8 +193,10 @@ brainfuck_parse_loop_4_unroll_loop:
 	jmp brainfuck_parse_loop_end
 
 brainfuck_parse_loop_4_normal_flow:
-	movl $0x2c2c8043, (%r14, %r9)           # (x86 machine code for addb imm, (%r12, %r13)) 43 80 2c 2c <imm>
-	movb %al, 4(%r14, %r9)                  # set the immediate
+	# (x86 machine code for subb imm, <4-byte offset>(%r12, %r13)) 43 80 ac 2c <4-byte offset> <imm>
+	movl $0x2cac8043, (%r14, %r9)
+	movl %esi, 4(%r14, %r9)                 # use global pointer offset
+	movb %al, 8(%r14, %r9)                  # sub amount
 
 	cmpq $0, %r11                           # if the offset of the pointer is not 0 the write does not affect *p
 	jne brainfuck_parse_loop_4_next
@@ -216,57 +204,63 @@ brainfuck_parse_loop_4_normal_flow:
 	subq %rax, %r10                         # use r10 to calculate the loop delta for *p
 
 brainfuck_parse_loop_4_next:
-	addq $5, %r9                            # advance the machine code pointer
+	addq $9, %r9                            # advance the machine code pointer
 	jmp brainfuck_parse_loop_end
 
 # 5: [, ip to set if *val == 0         [91]
 brainfuck_parse_loop_5:
-	# check if the loop is basically [-] (next two characters are 2d 5d), optimize to movb $0, (%r12, %r13)
+	# check if the loop is basically [-] (next two characters are 2d 5d), optimize to movb $0, <4-byte offset>(%r12, %r13)
 	cmpw $0x5d2d, 1(%r12, %r8)
 	jne brainfuck_parse_loop_5_normal
 
 	addq $2, %r8                            # advance the file offset pointer
 
-	# (x86 machine code for movb $0, (%r12, %r13)) 43 c6 04 2c 00
-	movl $0x2c04c643, (%r14, %r9)
-	movb $0x00, 4(%r14, %r9)
+	# (x86 machine code for movb $0, <4-byte offset>(%r12, %r13)) 43 c6 84 2c <4-byte offset> 00
+	movl $0x2c84c643, (%r14, %r9)
+	movl %esi, 4(%r14, %r9)
+	movb $0x00, 8(%r14, %r9)
 
-	movq two_to_62, %r11                    # fail loop unroll preconditions
+	movq $-1, %r15                          # fail loop unroll preconditions
 
-	addq $5, %r9                            # advance the machine code pointer
+	addq $9, %r9                            # advance the machine code pointer
 	jmp brainfuck_parse_loop_end
 
 brainfuck_parse_loop_5_normal:
-	# (x86 machine code for cmpb $0, (%r12, %r13)) 43 80 3c 2c 00
+	# (x86 machine code for cmpb $0, <4-byte offset>(%r12, %r13)) 43 80 bc 2c <4-byte offset> 00
 	# (x86 machine code for je <4-byte offset>) 0f 84 <4-byte offset>
-	movl $0x2c3c8043, (%r14, %r9)
-	movl $0x840f00, 4(%r14, %r9)            # fill everything aside from the immediate, as we do not know it yet
+	movl $0x2cbc8043, (%r14, %r9)
+	movl %esi, 4(%r14, %r9)                 # use global pointer offset
+	movl $0x840f00, 8(%r14, %r9)            # fill everything aside from the immediate, as we do not know it yet
 
+	pushq %r11                              # store previous loop's offset counter
 	pushq %r9                               # store the location on stack for reference by the closing bracket
 
 	xor %r10, %r10                          # reset the *p delta
 	xor %r11, %r11                          # reset the offset counter
 	movq %r8, %rbx                          # store the char offset for re-parsing
 
-	addq $11, %r9                           # advance the machine code pointer
+	addq $15, %r9                           # advance the machine code pointer
 	jmp brainfuck_parse_loop_end
 
 # 6: ], ip to set if *val != 0         [93]
 brainfuck_parse_loop_6:
-	cmpb $0, %r15b                          # if in unroll mode generate necessary instructions
-	je brainfuck_parse_loop_6_normal_flow
+	cmpq $1, %r15                           # if not in unroll mode generate normal instructions, otherwise we are done
+	jne brainfuck_parse_loop_6_normal_flow
 
-	movq $0, %r15                           # disable unroll mode
-	movq two_to_62, %r11                    # fail loop unroll preconditions
+	movq $-1, %r15                          # disable unroll mode and fail preconditions
+	popq %r11                               # restore previous loop's offset counter
 
 	jmp brainfuck_parse_loop_end
 
 brainfuck_parse_loop_6_normal_flow:
 	# verify loop unroll preconditions
 	cmpq $0, %r11                           # at the end of the loop the memory offset needs to be identical as at the start
-	jne brainfuck_parse_loop_6_normal
+	jne brainfuck_parse_loop_6_normal_offset_non_zero
 
 	cmpb $-1, %r10b                         # the delta of *p needs to be strictly -1
+	jne brainfuck_parse_loop_6_normal
+
+	cmpq $0, %r15                           # unroll preconditions must hold (no IO allowed)
 	jne brainfuck_parse_loop_6_normal
 
 	popq %r9                                # get location for the matching opening bracket
@@ -274,56 +268,70 @@ brainfuck_parse_loop_6_normal_flow:
 	# (x86 machine code for movb (%r12, %r13), %bl) 43 8a 1c 2c
 	movl $0x2c1c8a43, (%r14, %r9)           # store the iteration count in rbx
 
+	# as loop offset is zero we do not need to touch offset registers
 	addq $4, %r9                            # advance the machine code pointer
 	movq $1, %r15                           # enable unroll mode
 	movq %rbx, %r8                          # roll back the file offset, we will ignore the opening bracket, as r8 gets incremented at the end of this loop
 	jmp brainfuck_parse_loop_end
 
-brainfuck_parse_loop_6_normal:
-	movq two_to_62, %r11                    # fail loop unroll preconditions
+brainfuck_parse_loop_6_normal_offset_non_zero:
+	# dynamically adjust pointer offset, if non zero
+	movl $0x00c58149, (%r14, %r9)           # (x86 machine code for addq 4-byte imm, %r13) 49 81 c5 <4-byte imm>; we are adding an additional 00 byte in order to avoid introducing more mov instructions
+	movl %r11d, 3(%r14, %r9)                # set the immediate at offset 3 (as the instruction takes just 3 bytes)
 
-	# (x86 machine code for cmpb $0, (%r12, %r13)) 43 80 3c 2c 00
+	subq %r11, %rsi                         # fix global offset
+
+	addq $7, %r9                            # advance the machine code pointer
+
+brainfuck_parse_loop_6_normal:
+	movq $-1, %r15                          # fail loop unroll preconditions
+
+	# (x86 machine code for cmpb $0, <4-byte offset>(%r12, %r13)) 43 80 bc 2c <4-byte offset> 00
 	# (x86 machine code for jne <4-byte offset>) 0f 85 <4-byte offset>, negatives use two's complement
-	movl $0x2c3c8043, (%r14, %r9)
-	movl $0x850f00, 4(%r14, %r9)            # fill everything aside from the immediate
+	movl $0x2cbc8043, (%r14, %r9)
+	movl %esi, 4(%r14, %r9)                 # use global pointer offset
+	movl $0x850f00, 8(%r14, %r9)            # fill everything aside from the immediate
 
 	popq %rax                               # get location for the matching opening bracket
+	popq %r11                               # restore previous loop's offset counter
 
 	# set relative jumps to correct offsets
 	mov %eax, %edx
 	sub %r9d, %edx
 
-	movl %edx, 7(%r14, %r9)                 # %eax - %r9d
+	movl %edx, 11(%r14, %r9)                 # %eax - %r9d
 
 	neg %edx
 
-	movl %edx, 7(%r14, %rax)                # %r9d - %eax
+	movl %edx, 11(%r14, %rax)                # %r9d - %eax
 
-	addq $11, %r9                           # advance the machine code pointer
+	addq $15, %r9                           # advance the machine code pointer
 	jmp brainfuck_parse_loop_end
 
 # 7: , basically getchar_unlocked      [44]
 brainfuck_parse_loop_7:
 	# (x86 machine code for call *%r14) 41 ff d6
-	# (x86 machine code for movb %al, (%r12, %r13)) 43 88 04 2c
+	# (x86 machine code for movb %al, <4-byte offset>(%r12, %r13)) 43 88 84 2c <4-byte offset>
 	movl $0x43d6ff41, (%r14, %r9)
-	movl $0x002c0488, 4(%r14, %r9)
+	movl $0x002c8488, 4(%r14, %r9)
+	movl %esi, 7(%r14, %r9)                 # use global pointer offset
 
-	movq two_to_62, %r11                    # fail loop unroll preconditions
+	movq $-1, %r15                          # fail loop unroll preconditions
 
-	addq $7, %r9                            # advance the machine code pointer
+	addq $11, %r9                           # advance the machine code pointer
 	jmp brainfuck_parse_loop_end
 
 # 8: . basically putchar_unlocked      [46]
 brainfuck_parse_loop_8:
-	# (x86 machine code for movb (%r12, %r13), %dil) 43 8a 3c 2c
+	# (x86 machine code for movb <4-byte offset>(%r12, %r13), %dil) 43 8a bc 2c <4-byte offset>
 	# (x86 machine code for call *%r15) 41 ff d7
-	movl $0x2c3c8a43, (%r14, %r9)
-	movl $0x00d7ff41, 4(%r14, %r9)
+	movl $0x2cbc8a43, (%r14, %r9)
+	movl %esi, 4(%r14, %r9)                 # use global pointer offset
+	movl $0x00d7ff41, 8(%r14, %r9)
 
-	movq two_to_62, %r11                    # fail loop unroll preconditions
+	movq $-1, %r15                          # fail loop unroll preconditions
 
-	addq $7, %r9                            # advance the machine code pointer
+	addq $11, %r9                           # advance the machine code pointer
 	jmp brainfuck_parse_loop_end
 
 brainfuck_parse_loop_end:
