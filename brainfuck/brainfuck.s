@@ -103,8 +103,6 @@ brainfuck:
 	xor %rcx, %rcx      # clear rcx before using cl in the loop
 	xor %r9, %r9        # use r9 as the write counter
 
-	movq $0, %rsi             # use rsi as global offset counter
-
 	# loop unrolling state registers
 	xor %r10, %r10            # use r10 as *p delta counter
 	movq two_to_62, %r11      # use r11 as offset counter, when preconditions fail (IO occurs) set to 2^62
@@ -132,7 +130,6 @@ brainfuck_parse_loop_after_rep:
 # 1: >, count                          [62]
 brainfuck_parse_loop_1:
 	addq %rax, %r11                         # count the offset for loop unrolls
-	addq %rax, %rsi                         # count the global offset
 
 	cmpb $0, %r15b                          # if in unroll mode we don't need to do anything else
 	jne brainfuck_parse_loop_end
@@ -146,7 +143,6 @@ brainfuck_parse_loop_1:
 # 2: <, count                          [60]
 brainfuck_parse_loop_2:
 	subq %rax, %r11                         # count the offset for loop unrolls
-	subq %rax, %rsi                         # count the global offset
 
 	cmpb $0, %r15b                          # if in unroll mode we don't need to do anything else
 	jne brainfuck_parse_loop_end
@@ -371,6 +367,7 @@ brainfuck_execution_end: # end of execution
 # general ideas:
 # 30000 pre-zeroed bytes in data
 # JIT x86 machine code based on the brainfuck code
+# OPTIMIZE, OPTIMIZE, OPTIMIZE (and preferably don't overprofile for mandelbrot.b)
 #
 # use a jump table for parsing
 #
