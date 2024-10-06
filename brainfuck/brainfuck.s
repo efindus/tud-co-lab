@@ -106,7 +106,6 @@ brainfuck:
 	xor %r9, %r9        # use r9 as the write counter
 
 	# loop unrolling state registers
-	xor %r10, %r10            # use r10 as *p delta counter
 	movq two_to_62, %r11      # use r11 as offset counter, when preconditions fail (IO occurs) set to 2^62
 	xor %r15, %r15            # use r15 to indicate that we are in unroll mode
 	# use rbx as a temporary store for r8 at the last [ location
@@ -160,18 +159,12 @@ brainfuck_parse_loop_3:
 	cmpb $0, %r15b                          # if in unroll mode generate necessary instructions
 	je brainfuck_parse_loop_3_normal_flow
 
-	# (x86 machine code for movq <4-byte imm>, %rax) 48 c7 c0 <4-byte imm>
-	movl $0xc0c748, (%r14, %r9)
-	movb %al, 3(%r14, %r9)
+	# (x86 machine code for addb imm, <4-byte offset>(%r12, %r13)) 43 80 84 2c <4-byte offset> <imm>
+	movl $0x2c848043, (%r14, %r9)
+	movl %r11d, 4(%r14, %r9)                # write offset
+	movb %al, 8(%r14, %r9)                  # add amount
 
-	# (x86 machine code for imul %rbx) 48 f7 eb
-	movl $0xebf748, 7(%r14, %r9)
-
-	# (x86 machine code for addb %al, <4-byte offset>(%r12, %r13)) 43 00 84 2c <4-byte offset>
-	movl $0x2c840043, 10(%r14, %r9)
-	movl %r11d, 14(%r14, %r9)
-
-	addq $18, %r9                           # advance the machine code pointer
+	addq $9, %r9                            # advance the machine code pointer
 
 	jmp brainfuck_parse_loop_end
 
@@ -179,12 +172,6 @@ brainfuck_parse_loop_3_normal_flow:
 	movl $0x2c048043, (%r14, %r9)           # (x86 machine code for addb imm, (%r12, %r13)) 43 80 04 2c <imm>
 	movb %al, 4(%r14, %r9)                  # set the immediate
 
-	cmpq $0, %r11                           # if the offset of the pointer is not 0 the write does not affect *p
-	jne brainfuck_parse_loop_3_next
-
-	addq %rax, %r10                         # use r10 to calculate the loop delta for *p
-
-brainfuck_parse_loop_3_next:
 	addq $5, %r9                            # advance the machine code pointer
 	jmp brainfuck_parse_loop_end
 
@@ -193,18 +180,12 @@ brainfuck_parse_loop_4:
 	cmpb $0, %r15b                          # if in unroll mode generate necessary instructions
 	je brainfuck_parse_loop_4_normal_flow
 
-	# (x86 machine code for movq <4-byte imm>, %rax) 48 c7 c0 <4-byte imm>
-	movl $0xc0c748, (%r14, %r9)
-	movb %al, 3(%r14, %r9)
+	# (x86 machine code for subb imm, <4-byte offset>(%r12, %r13)) 43 80 ac 2c <4-byte offset> <imm>
+	movl $0x2cac8043, (%r14, %r9)
+	movl %r11d, 4(%r14, %r9)                # write offset
+	movb %al, 8(%r14, %r9)                  # sub amount
 
-	# (x86 machine code for imul %rbx) 48 f7 eb
-	movl $0xebf748, 7(%r14, %r9)
-
-	# (x86 machine code for subb %al, <4-byte offset>(%r12, %r13)) 43 28 84 2c <4-byte offset>
-	movl $0x2c842843, 10(%r14, %r9)
-	movl %r11d, 14(%r14, %r9)
-
-	addq $18, %r9                           # advance the machine code pointer
+	addq $9, %r9                            # advance the machine code pointer
 
 	jmp brainfuck_parse_loop_end
 
@@ -212,12 +193,6 @@ brainfuck_parse_loop_4_normal_flow:
 	movl $0x2c2c8043, (%r14, %r9)           # (x86 machine code for addb imm, (%r12, %r13)) 43 80 2c 2c <imm>
 	movb %al, 4(%r14, %r9)                  # set the immediate
 
-	cmpq $0, %r11                           # if the offset of the pointer is not 0 the write does not affect *p
-	jne brainfuck_parse_loop_4_next
-
-	subq %rax, %r10                         # use r10 to calculate the loop delta for *p
-
-brainfuck_parse_loop_4_next:
 	addq $5, %r9                            # advance the machine code pointer
 	jmp brainfuck_parse_loop_end
 
@@ -246,7 +221,6 @@ brainfuck_parse_loop_5_normal:
 
 	pushq %r9                               # store the location on stack for reference by the closing bracket
 
-	xor %r10, %r10                          # reset the *p delta
 	xor %r11, %r11                          # reset the offset counter
 	movq %r8, %rbx                          # store the char offset for re-parsing
 
@@ -255,33 +229,22 @@ brainfuck_parse_loop_5_normal:
 
 # 6: ], ip to set if *val != 0         [93]
 brainfuck_parse_loop_6:
-	cmpb $0, %r15b                          # if in unroll mode generate necessary instructions
-	je brainfuck_parse_loop_6_normal_flow
+	cmpb $0, %r15b                          # if in unroll mode finish compiling the loop
+	jne brainfuck_parse_loop_6_normal
 
-	movq $0, %r15                           # disable unroll mode
-	movq two_to_62, %r11                    # fail loop unroll preconditions
-
-	jmp brainfuck_parse_loop_end
-
-brainfuck_parse_loop_6_normal_flow:
 	# verify loop unroll preconditions
 	cmpq $0, %r11                           # at the end of the loop the memory offset needs to be identical as at the start
 	jne brainfuck_parse_loop_6_normal
 
-	cmpb $-1, %r10b                         # the delta of *p needs to be strictly -1
-	jne brainfuck_parse_loop_6_normal
+	movq (%rsp), %r9                        # get location for the matching opening bracket
+	addq $11, %r9                           # advance the machine code pointer (keep the opening bracket instructions)
 
-	popq %r9                                # get location for the matching opening bracket
-
-	# (x86 machine code for movb (%r12, %r13), %bl) 43 8a 1c 2c
-	movl $0x2c1c8a43, (%r14, %r9)           # store the iteration count in rbx
-
-	addq $4, %r9                            # advance the machine code pointer
 	movq $1, %r15                           # enable unroll mode
 	movq %rbx, %r8                          # roll back the file offset, we will ignore the opening bracket, as r8 gets incremented at the end of this loop
 	jmp brainfuck_parse_loop_end
 
 brainfuck_parse_loop_6_normal:
+	movq $0, %r15                           # disable unroll mode
 	movq two_to_62, %r11                    # fail loop unroll preconditions
 
 	# (x86 machine code for cmpb $0, (%r12, %r13)) 43 80 3c 2c 00
