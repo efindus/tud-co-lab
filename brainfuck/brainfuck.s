@@ -1,5 +1,5 @@
 .data
-# 30000 bytes
+# 30000 pre-zeroed bytes
 	program_data: .zero 30000
 
 .text
@@ -7,16 +7,16 @@
 	two_to_62: .quad 0x4000000000000000
 
 # character reference:
-# 3: +, count                          [43]
-# 7: , basically getchar_unlocked      [44]
-# 4: -, count                          [45]
-# 8: . basically putchar_unlocked      [46]
-# 2: <, count                          [60]
-# 1: >, count                          [62]
-# 5: [, ip to set if *val == 0         [91]
-# 6: ], ip to set if *val != 0         [93]
+# 3: + [43]
+# 7: , [44]
+# 4: - [45]
+# 8: . [46]
+# 2: < [60]
+# 1: > [62]
+# 5: [ [91]
+# 6: ] [93]
 
-# jump tables for speed
+# jump tables for speed (and cleanness)
 # table for checking whether to collapse neighboring commands of given type
 	char_repetition_table:
 		.zero 43
@@ -56,11 +56,13 @@
 
 # subroutine to call putchar
 # getting a dynamically linked offset for machine code to use proved too annoying
+# we simply jump so that ret in putchar goes back to the right place, and not here
 putchar_unlocked_call:
 	jmp putchar_unlocked
 
 # subroutine to call getchar
 # getting a dynamically linked offset for machine code to use proved too annoying
+# we simply jump so that ret in getchar goes back to the right place, and not here
 getchar_unlocked_call:
 	jmp getchar_unlocked
 
@@ -85,7 +87,7 @@ brainfuck:
 
 	movq %r13, %r14
 	imul $11, %r14      # allocate 11 bytes for every byte of the program to be certain we have enough space for the entire machine code
-	addq $9, %r14       # reserve some additional bytes for the final jump back into our code
+	addq $1, %r14       # reserve some additional bytes for the final ret to our code
 
 	# get executable memory from the kernel
 	mov $9, %rax        # sys_mmap (9)
@@ -147,7 +149,7 @@ brainfuck_parse_loop_2:
 	cmpb $0, %r15b                          # if in unroll mode we don't need to do anything else
 	jne brainfuck_parse_loop_end
 
-	movl $0x00ed8149, (%r14, %r9)           # (x86 machine code for addq 4-byte imm, %r13) 49 81 ed <4-byte imm>; we are adding an additional 00 byte in order to avoid introducing more mov instructions
+	movl $0x00ed8149, (%r14, %r9)           # (x86 machine code for subq 4-byte imm, %r13) 49 81 ed <4-byte imm>; we are adding an additional 00 byte in order to avoid introducing more mov instructions
 	movl %eax, 3(%r14, %r9)                 # set the immediate at offset 3 (as the instruction takes just 3 bytes)
 
 	addq $7, %r9                            # advance the machine code pointer
@@ -203,7 +205,7 @@ brainfuck_parse_loop_4_unroll_loop:
 	jmp brainfuck_parse_loop_end
 
 brainfuck_parse_loop_4_normal_flow:
-	movl $0x2c2c8043, (%r14, %r9)           # (x86 machine code for addb imm, (%r12, %r13)) 43 80 2c 2c <imm>
+	movl $0x2c2c8043, (%r14, %r9)           # (x86 machine code for subb imm, (%r12, %r13)) 43 80 2c 2c <imm>
 	movb %al, 4(%r14, %r9)                  # set the immediate
 
 	cmpq $0, %r11                           # if the offset of the pointer is not 0 the write does not affect *p
@@ -327,12 +329,9 @@ brainfuck_parse_loop_end:
 	cmp %r13, %r8                   # and check for length
 	jne brainfuck_parse_loop
 
-# add a jump back to our code at the end
-	# (x86 machine code for movl <4-byte imm>, %rax) 48 c7 c0 <4-byte imm>
-	# (x86 machine code for jmp *%rax) ff e0
-	movl $0xc0c748, (%r14, %r9)
-	movl $brainfuck_execution_end, 3(%r14, %r9)
-	movw $0xe0ff, 7(%r14, %r9)
+# go back to our code at the end
+	# (x86 machine code for ret) c3
+	movb $0xc3, (%r14, %r9)
 
 # JIT is done, now time to execute
 # current register state: machine code in r14, rest irrelevant
@@ -346,13 +345,12 @@ brainfuck_parse_loop_end:
 	movq $getchar_unlocked_call, %r14
 	movq $putchar_unlocked_call, %r15
 
-	xor %r13, %r13             # use r13 as memory pointer
+	xor %r13, %r13             # use r13 as index
 	movq $program_data, %r12   # use r12 as pointer to program memory
 
-	# jump to start
-	jmp *%r9
+	# call the generated code
+	call *%r9
 
-brainfuck_execution_end: # end of execution
 	# epilogue
 	movq %rbp, %rsp
 	popq %rbx
@@ -367,18 +365,6 @@ brainfuck_execution_end: # end of execution
 # general ideas:
 # 30000 pre-zeroed bytes in data
 # JIT x86 machine code based on the brainfuck code
-# OPTIMIZE, OPTIMIZE, OPTIMIZE (and preferably don't overprofile for mandelbrot.b)
+# OPTIMIZE, OPTIMIZE, OPTIMIZE (and preferably don't overprofile)
 #
 # use a jump table for parsing
-#
-# brainfuck commands
-# 0-8, arg (if applicable)
-# 1: >, count                          [62]
-# 2: <, count                          [60]
-# 3: +, count                          [43]
-# 4: -, count                          [45]
-# 5: [, ip to set if *val == 0         [91]
-# 6: ], ip to set if *val != 0         [93]
-# 7: , basically getchar_unlocked      [44]
-# 8: . basically putchar_unlocked      [46]
-#
