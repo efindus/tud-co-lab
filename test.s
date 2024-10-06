@@ -6,6 +6,31 @@
     .global main
 
 main:
+    addb %bl, 0x0eadbeef(%r13)
+    addb $0xff, (%r13)
+
+    subb %bl, 0x0eadbeef(%r13)
+    subb $0xff, (%r13)
+
+    movb $0, (%r13)
+
+    cmpb $0, (%r13)
+
+    movb (%r13), %bl
+
+    movb %al, (%r13)
+
+    movb (%r13), %dil
+
+    // subb %bl, 0xdead(%r12, %r13)
+    // movb %al, 0xdead(%r12, %r13)
+    // movb 0xdead(%r12, %r13), %dil
+    // cmpb $0, 0x0eadbeef(%r12, %r13)
+    // movb $0, 0x0eadbeef(%r12, %r13)
+    // subb $10, 40000(%r12, %r13)
+    // test (%r12,%r13), (%r12,%r13)
+
+
 //     pushq $42
 //     pushq $0xC0AF1FF
 
@@ -47,26 +72,26 @@ main:
 //     ret
 
 
-    movq $1, %rax
-    pushq $8
-    pushq $4
-    pushq $7
-    movq $5, %rdi
-    addq $8, %rsp
-    call foo
-    pushq $8
+//     movq $1, %rax
+//     pushq $8
+//     pushq $4
+//     pushq $7
+//     movq $5, %rdi
+//     addq $8, %rsp
+//     call foo
+//     pushq $8
 
-foo:
-    pushq %rbp
-    movq %rsp, %rbp
+// foo:
+//     pushq %rbp
+//     movq %rsp, %rbp
 
-    pushq %rdi
-    mulq -8(%rbp)
-    addq 16(%rbp), %rax
+//     pushq %rdi
+//     mulq -8(%rbp)
+//     addq 16(%rbp), %rax
 
-    movq %rbp, %rsp
-    popq %rbp
-    ret
+//     movq %rbp, %rsp
+//     popq %rbp
+//     ret
 
     // # Open the file (sys_open)
     // mov $2, %rax                          # sys_open system call number
