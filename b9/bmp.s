@@ -57,15 +57,15 @@ gen_bmp_pixeldata_inner_loop:
 
 	# res[r8 + 56] = pixel_data[r9] (red)
 	movb (%r12, %r9, 1), %cl
-	movb %cl, 56(%r13, %r8, 1)
+	movb %cl, 54(%r13, %r9, 1)
 
 	# res[r8 + 55] = pixel_data[r9 + 1] (green)
 	movb 1(%r12, %r9, 1), %cl
-	movb %cl, 55(%r13, %r8, 1)
+	movb %cl, 55(%r13, %r9, 1)
 
 	# res[r8 + 54] = pixel_data[r9 + 2] (blue)
 	movb 2(%r12, %r9, 1), %cl
-	movb %cl, 54(%r13, %r8, 1)
+	movb %cl, 56(%r13, %r9, 1)
 
 	# go to the next pixel
 	addq $3, %r8
@@ -113,48 +113,6 @@ get_pixeldata_from_bmp:
 
 	movq %rdi, %r12                 # put BMP data pointer in r12
 
-	cmpw $0x4d42, (%r12)            # check for BMP magic
-	jne get_pixeldata_error_end
-
-	cmpl $3126, 2(%r12)             # check for file size
-	jne get_pixeldata_error_end
-
-	cmpl $54, 10(%r12)               # check for pixel data offset
-	jne get_pixeldata_error_end
-
-	cmpl $40, 14(%r12)              # check for DIB header size
-	jne get_pixeldata_error_end
-
-	cmpl $32, 18(%r12)              # check for BMP width
-	jne get_pixeldata_error_end
-
-	cmpl $32, 22(%r12)              # check for BMP height
-	jne get_pixeldata_error_end
-
-	cmpw $1, 26(%r12)               # check for number of planes
-	jne get_pixeldata_error_end
-
-	cmpw $24, 28(%r12)              # check for bits per pixel
-	jne get_pixeldata_error_end
-
-	cmpl $0, 30(%r12)               # make sure no compression was used
-	jne get_pixeldata_error_end
-
-	cmpl $3072, 34(%r12)            # check if pixel data size matches
-	jne get_pixeldata_error_end
-
-	cmpl $2835, 38(%r12)            # check for horizontal pixel density
-	jne get_pixeldata_error_end
-
-	cmpl $2835, 42(%r12)            # check for vertical pixel density
-	jne get_pixeldata_error_end
-
-	cmpl $0, 46(%r12)               # make sure there is no color pallete
-	jne get_pixeldata_error_end
-
-	cmpl $0, 50(%r12)               # nor any important colors
-	jne get_pixeldata_error_end
-
 	movq $3072, %rdi                # allocate space for unscrambled pixeldata
 	call malloc
 
@@ -163,13 +121,9 @@ get_pixeldata_from_bmp:
 	xor %rdx, %rdx                  # row iterator in rdx
 get_pixeldata_main_loop:
 	# BMP stores rows of pixels in reverse order (left-right, bottom-top; therefore we calculate the inverted index)
-	movq $31, %r8
-	subq %rdx, %r8                  # calculate 31 - rdx (rowIndex), result in r8
-
 	movq %rdx, %r9                  # for indexing within the row copy rdx into r9
 
 	# each row is 32 * 3 = 96 bytes wide
-	imulq $96, %r8
 	imulq $96, %r9
 
 	xor %rax, %rax                  # use rax as column iterator
@@ -177,19 +131,18 @@ get_pixeldata_inner_loop:
 	# convert BGR into RGB, and encode bottom-top
 
 	# res[r8] = bmp[r9 + 56] (red)
-	movb 56(%r12, %r9, 1), %cl
-	movb %cl, (%r13, %r8, 1)
+	movb 54(%r12, %r9, 1), %cl
+	movb %cl, (%r13, %r9, 1)
 
 	# res[r8 + 1] = bmp[r9 + 55] (green)
 	movb 55(%r12, %r9, 1), %cl
-	movb %cl, 1(%r13, %r8, 1)
+	movb %cl, 1(%r13, %r9, 1)
 
 	# res[r8 + 2] = bmp[r9 + 54] (blue)
-	movb 54(%r12, %r9, 1), %cl
-	movb %cl, 2(%r13, %r8, 1)
+	movb 56(%r12, %r9, 1), %cl
+	movb %cl, 2(%r13, %r9, 1)
 
 	# go to the next pixel
-	addq $3, %r8
 	addq $3, %r9
 
 	inc %rax
@@ -201,11 +154,6 @@ get_pixeldata_inner_loop:
 	jne get_pixeldata_main_loop     # loop if not
 
 	movq %r13, %rax                 # return the malloc'd buffer
-
-	jmp get_pixeldata_end
-
-get_pixeldata_error_end:
-	movq $0, %rax
 
 get_pixeldata_end:
 	# epilogue

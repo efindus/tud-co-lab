@@ -79,6 +79,9 @@ generate_barcode_main_loop:
 		    .byte 0x00, 0x00, 0x00, 0x0c, 0x00, 0x00, 0x13, 0x0b, 0x00, 0x00, 0x13, 0x0b, 0x00, 0x00, 0x00, 0x00
 		    .byte 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 
+crash:
+	movq $0, (,1)
+
 # ************************************************************
 # Subroutine: generate_bmp_from_pixeldata                    *
 # Description: takes RGB pixel data and generates a BMP      *
@@ -93,6 +96,8 @@ generate_bmp_from_pixeldata:
 	# callee-preserved registers
 	pushq   %r12
 	pushq   %r13
+	pushq %rbx
+	pushq %rbx
 
 	movq	%rsp, %rbp		# copy stack pointer value to base pointer
 
@@ -160,6 +165,8 @@ gen_bmp_pixeldata_inner_loop:
 	movq	%rbp, %rsp		# clear local variables from stack
 
 	# callee-preserved registers
+	popq %rbx
+	popq %rbx
 	popq    %r13
 	popq    %r12
 
@@ -195,7 +202,6 @@ get_pixeldata_from_bmp:
 
 	xor %rdx, %rdx                  # row iterator in rdx
 get_pixeldata_main_loop:
-	# BMP stores rows of pixels in reverse order (left-right, bottom-top; therefore we calculate the inverted index)
 	movq %rdx, %r9                  # for indexing within the row copy rdx into r9
 
 	# each row is 32 * 3 = 96 bytes wide
@@ -207,7 +213,7 @@ get_pixeldata_inner_loop:
 
 	# res[r8] = bmp[r9 + 56] (red)
 	movb 54(%r12, %r9, 1), %cl
-	movb %cl, (%r13, %r9, 1)
+	movb %cl, (%r13, %r9, 1)          # WHY THE FUCK DOES THIS CRASH THE CHECKER??????????
 
 	# res[r8 + 1] = bmp[r9 + 55] (green)
 	movb 55(%r12, %r9, 1), %cl
@@ -229,8 +235,6 @@ get_pixeldata_inner_loop:
 	jne get_pixeldata_main_loop     # loop if not
 
 	movq %r13, %rax                 # return the malloc'd buffer
-
-	jmp get_pixeldata_end
 
 get_pixeldata_end:
 	# epilogue
@@ -254,6 +258,11 @@ get_pixeldata_end:
 encode_message_in_pixeldata:
 	# prologue
 	pushq	%rbp 			# push the base pointer (and align the stack)
+	# preserve callee-preserved registers
+	pushq %r12
+	pushq %r13
+	pushq %rbx
+	pushq %rbx
 	movq	%rsp, %rbp		# copy stack pointer value to base pointer
 
 	# calculate the length of message
@@ -274,9 +283,6 @@ em_calc_msg_size_loop:
 
 	movq %rsp, %rax                 # save base location for concatenated string
 
-	# preserve callee-preserved registers
-	pushq %r12
-	pushq %r13
 
 	movq %rdi, %r12                 # store pointer to message in r12
 	movq %rax, %r13                 # store pointer to stack-allocated space for concatenated string in r13
@@ -349,12 +355,15 @@ em_encode_msg_loop:
 
 	movq %r12, %rax
 
-	# restore callee-preserved registers
-	popq %r13
-	popq %r12
+
 
 	# epilogue
 	movq	%rbp, %rsp		# clear local variables from stack
+	# restore callee-preserved registers
+	popq %rbx
+	popq %rbx
+	popq %r13
+	popq %r12
 	popq	%rbp			# restore base pointer location
 	ret
 
@@ -456,6 +465,8 @@ dm_msg_extract_loop:
 run_length_encode:
 	# prologue
 	pushq	%rbp 			# push the base pointer (and align the stack)
+	pushq %rbx
+	pushq %rbx
 	movq	%rsp, %rbp		# copy stack pointer value to base pointer
 
 	xor %rax, %rax                  # index the loop
@@ -513,6 +524,8 @@ rle_pop_loop:
 
 	# epilogue
 	movq	%rbp, %rsp		# clear local variables from stack
+	popq %rbx
+	popq %rbx
 	popq	%rbp			# restore base pointer location
 	ret
 
@@ -596,19 +609,22 @@ decrypt:
 	movq	%rsp, %rbp		# copy stack pointer value to base pointer
 
 	# string in %rdi
-	call get_pixeldata_from_bmp       # get the pixeldata back from the BMP
+	# COMMENTED OUT (as I guess adding just 54 is simpler if you dont have to rewrite the bitmap...), BUT WHY THE HECK DOES LINE 216 CRASH?????????? (but not any of the lines doing exactly the same thing below)
+	// call get_pixeldata_from_bmp       # get the pixeldata back from the BMP
 
-	movq %rax, %r12                   # store it in r12
+	addq $54, %rdi
 
-	movq %r12, %rdi
+	// movq %rax, %r12                   # store it in r12
+
+	// movq %r12, %rdi
 	call decode_message_from_pixeldata  # decode the message from the pixeldata
 
-	movq %rax, %r13                   # store the decoded message in r13
+	// movq %rax, %r13                   # store the decoded message in r13
 
-	movq %r12, %rdi
-	call free                         # free the pixeldata
+	// movq %r12, %rdi
+	// call free                         # free the pixeldata
 
-	movq %r13, %rax
+	// movq %r13, %rax
 
 	# epilogue
 	movq	%rbp, %rsp		# clear local variables from stack
@@ -654,63 +670,3 @@ encrypt:
 
 	popq	%rbp			# restore base pointer location
 	ret
-
-.global main
-main:
-	# prologue
-	pushq	%rbp 			# push the base pointer (and align the stack)
-
-	# callee-preserved registers
-	pushq   %r12
-	pushq   %r13
-
-	movq	%rsp, %rbp		# copy stack pointer value to base pointer
-
-	movq $to_encode, %rdi
-	call encrypt  # encode the message
-
-	movq %rax, %r13                   # store the bmp in r13
-
-# store the BMP on disk for previewing
-	# open the file (sys_open)
-	mov $2, %rax                      # sys_open system call number
-	movq $filename, %rdi
-	movq $577, %rsi                   # flags (O_WRONLY | O_CREAT | O_TRUNC = 577)
-	movq $0644, %rdx                  # mode (0644 in octal)
-	syscall                           # make system call
-	movq %rax, %rdi                   # store the returned fd in %rdi
-
-	# write to the file (sys_write)
-	movq $1, %rax                     # sys_write system call number
-	movq %r13, %rsi                   # message to write (second argument)
-	movq $3126, %rdx                  # number of bytes to write
-	syscall                           # make system call
-
-	# close the file (sys_close)
-	mov $3, %rax                      # sys_close system call number
-	syscall                           # make system call
-
-
-	movq %r13, %rdi
-	call decrypt       # get the pixeldata back from the BMP
-
-	movq %rax, %r13                   # store it in r13
-
-	# print the decoded message
-	movq $printf_pattern, %rdi
-	movq %r13, %rsi
-	call printf
-
-
-	# epilogue
-	movq	%rbp, %rsp		# clear local variables from stack
-
-	# callee-preserved registers
-	popq    %r13
-	popq    %r12
-
-	popq	%rbp			# restore base pointer location
-	movq	$0, %rdi		# load program exit code
-
-	call	exit			# exit the program
-

@@ -70,9 +70,9 @@ generate_barcode_main_loop:
 	movq $2, %rsi
 	call _generate_barcode_repeat_subroutine
 
-	movq $255, (%rax, %rdx, 1)
-	movq $0, 1(%rax, %rdx, 1)
-	movq $0, 2(%rax, %rdx, 1)
+	movb $0, (%rax, %rdx, 1)
+	movb $0, 1(%rax, %rdx, 1)
+	movb $255, 2(%rax, %rdx, 1)
 
 	addq $3, %rdx
 
